@@ -110,7 +110,7 @@ def backward_pass(y_true, params, cache):
     Regra da cadeia: dL/dW1 = dL/dA2 * dA2/dZ2 * dZ2/dA1 * dA1/dZ1 * dZ1/dW1
     """
     m = y_true.shape[1]  # número de amostras
-    W2 = params["W2"]
+    W2 = params["W2"]   
     Z1, A1, Z2, A2, X = cache["Z1"], cache["A1"], cache["Z2"], cache["A2"], cache["X"]
 
     # ── Camada de saída (camada 2) ──
