@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <vector>
 
+using vetor = std::vector<double>;
+
 double relu(double z) {
     return z>0?z:0;
 }
@@ -22,7 +24,7 @@ double sigmoid_grad(double z) {
     return s * (1 - s);
 }
 
-double binary_cross_entropy(const std::vector<double>& y_pred, const std::vector<double>& y_true) {
+double binary_cross_entropy(const vetor& y_pred, const vetor& y_true) {
     size_t n = y_pred.size();
     if (n == 0) return 0.0;
 
@@ -39,24 +41,33 @@ double binary_cross_entropy(const std::vector<double>& y_pred, const std::vector
     return -(loss / static_cast<double>(n));
 }
 
-std::vector<double> binary_cross_entropy_grad(const std::vector<double>& y_pred, const std::vector<double>& y_true) {
+typedef struct matriz {
+    vetor m;
+    int n_linhas;
+    int n_colunas;
+} matriz;
+
+matriz binary_cross_entropy_grad(const vetor& y_pred, const vetor& y_true) {
     size_t n = y_pred.size();
-    std::vector<double> grads(n);
+    matriz grads;
+    grads.n_linhas = 1;
+    grads.n_colunas = n;
+    grads.m.resize(grads.n_linhas * grads.n_colunas);
     double eps = 1e-15;
 
     for (size_t i = 0; i < n; i++) {
         double p = std::clamp(y_pred[i], eps, 1.0 - eps);
         double y = y_true[i];
 
-        grads[i] = -(y / p - (1.0 - y) / (1.0 - p)) / static_cast<double>(n);
+        grads.m[i] = -(y / p - (1.0 - y) / (1.0 - p)) / static_cast<double>(n);
     }
 
     return grads;
 }
 
 typedef struct camadas {
-    std::unordered_map<std::string, std::vector<std::vector<double>>> W;
-    std::unordered_map<std::string, std::vector<double>> b;
+    std::unordered_map<std::string, matriz> W;
+    std::unordered_map<std::string, vetor> b;
 } camadas;
 
 camadas inicializar_pesos(int n_entrada, int n_oculta, int n_saida, int seed = 42) {
@@ -68,67 +79,80 @@ camadas inicializar_pesos(int n_entrada, int n_oculta, int n_saida, int seed = 4
     double escala_W1 = std::sqrt(2.0 / n_entrada);
     double escala_W2 = std::sqrt(2.0 / n_oculta);
 
-    params.W["W1"].resize(n_oculta, std::vector<double>(n_entrada));
+    params.W["W1"].m.resize(n_oculta * n_entrada);
+    params.W["W1"].n_linhas = n_oculta;
+    params.W["W1"].n_colunas = n_entrada;
     params.b["b1"].assign(n_oculta, 0.0);
     for (int i = 0; i < n_oculta; ++i) {
         for (int j = 0; j < n_entrada; ++j) {
-            params.W["W1"][i][j] = normal(rng) * escala_W1;
+            params.W["W1"].m[i * params.W["W1"].n_colunas + j] = normal(rng) * escala_W1;
         }
     }
 
-    params.W["W2"].resize(n_saida, std::vector<double>(n_oculta));
+    params.W["W2"].m.resize(n_saida * n_oculta);
+    params.W["W1"].n_linhas = n_saida;
+    params.W["W1"].n_colunas = n_oculta;
     params.b["b2"].assign(n_saida, 0.0);
     for (int i = 0; i < n_saida; ++i) {
         for (int j = 0; j < n_oculta; ++j) {
-            params.W["W2"][i][j] = normal(rng) * escala_W2;
+            params.W["W2"].m[i * params.W["W2"].n_colunas + j] = normal(rng) * escala_W2;
         }
     }
 
     return  params;
 }
 
-std::vector<std::vector<double>> mult_matrix_bias(const std::vector<std::vector<double>> m1, const std::vector<std::vector<double>> m2, const std::vector<double>& bias) {
-    std::vector<std::vector<double>> mres(m1.size(), std::vector<double>(m2[0].size(), 0));
-    for (int i = 0; i < m1.size(); i++) {
-        for (int j = 0; j < m2[0].size(); j++) {
-            double soma = 0.0;
-            for (int k = 0; k < m1[0].size(); k++) {
-                soma += m1[i][k] * m2[k][j];
+matriz mult_matrix_bias(const matriz& m1, const matriz& m2, const vetor& bias) {
+    matriz mres;
+    mres.m.resize(m1.n_linhas * m2.n_colunas, 0);
+    mres.n_linhas = m1.n_linhas;
+    mres.n_colunas = m2.n_colunas;
+    for (int i = 0; i < mres.n_linhas; i++) {
+        for (int j = 0; j < mres.n_colunas; j++) {
+            double soma{0.0};
+            for (int k = 0; k < m1.n_colunas; k++) {
+                soma += m1.m[i * m1.n_colunas + k] * m2.m[k * m2.n_colunas + j];
             }
-            mres[i][j] = soma + bias[i];
+            mres.m[i * mres.n_colunas + j] = soma + bias[i];
         }
     }
     return mres;
 }
 
-std::vector<std::vector<double>> relu_matrix(const std::vector<std::vector<double>>& m) {
-    std::vector<std::vector<double>> mres(m.size(), std::vector<double>(m[0].size()));
-    for (int i = 0; i < mres.size(); i++) {
-        for (int j = 0; j < mres[0].size(); j++) {
-            mres[i][j] = relu(m[i][j]);
+matriz relu_matrix(const matriz& m) {
+    matriz mres;
+    mres.m.resize(m.n_linhas * m.n_colunas);
+    mres.n_linhas = m.n_linhas;
+    mres.n_colunas = m.n_colunas;
+    for (int i = 0; i < mres.n_linhas; i++) {
+        for (int j = 0; j < mres.n_colunas; j++) {
+            mres.m[i * mres.n_colunas + j] = relu(m.m[i * m.n_colunas + j]);
         }
     }
     return mres;
 }
 
-std::vector<std::vector<double>> sigmoid_matrix(const std::vector<std::vector<double>>& m) {
-    std::vector<std::vector<double>> mres(m.size(), std::vector<double>(m[0].size()));
-    for (int i = 0; i < mres.size(); i++) {
-        for (int j = 0; j < mres[0].size(); j++) {
-            mres[i][j] = sigmoid(m[i][j]);
+matriz sigmoid_matrix(const matriz& m) {
+    matriz mres;
+    mres.m.resize(m.n_linhas * m.n_colunas);
+    mres.n_linhas = m.n_linhas;
+    mres.n_colunas = m.n_colunas;
+    for (int i = 0; i < mres.n_linhas; i++) {
+        for (int j = 0; j < mres.n_colunas; j++) {
+            mres.m[i * mres.n_colunas + j] = sigmoid(m.m[i * m.n_colunas + j]);
         }
     }
     return mres;
 }
 
 typedef struct output {
-    std::vector<std::vector<double>> y_pred;
-    std::unordered_map<std::string, std::vector<std::vector<double>>> cache;
+    matriz y_pred;
+    std::unordered_map<std::string, matriz> cache;
 } output;
 
-output forward_pass(const std::vector<std::vector<double>>& X, const camadas& params) {
-    std::vector<std::vector<double>> W1 = params.W.at("W1"), W2 = params.W.at("W2");
-    std::vector<double> b1 = params.b.at("b1"), b2 = params.b.at("b2");
+output forward_pass(const matriz& X, const camadas& params) {
+    matriz W1 = params.W.at("W1"), W2 = params.W.at("W2");
+    vetor b1 = params.b.at("b1"), b2 = params.b.at("b2");
 
     auto Z1 = mult_matrix_bias(W1, X, b1);
     auto A1 = relu_matrix(Z1);
@@ -140,10 +164,124 @@ output forward_pass(const std::vector<std::vector<double>>& X, const camadas& pa
     out.cache["Z1"] = Z1;
     out.cache["A1"] = A1;
     out.cache["Z2"] = Z2;
-    out.cache["A1"] = A2;
+    out.cache["A2"] = A2;
     out.cache["X"] = X;
 
     return out;
+}
+
+matriz sigmoid_grad_vector(const matriz& v1, const matriz& v2) {
+    matriz vres;
+    vres.n_linhas = v1.n_linhas;
+    vres.n_colunas = v1.n_colunas;
+    for (int i = 0; i < v1.n_linhas; i++) {
+        vres.m[i] = v1.m[i] * sigmoid_grad(v2.m[i]);
+    }
+    return vres;
+}
+
+matriz mult_matrix_div_m(matriz m1, matriz m2, double m) {
+    matriz mres;
+    mres.m.resize(m1.n_linhas * m2.n_colunas, 0);
+    for (int i = 0; i < mres.n_linhas; i++) {
+        for (int j = 0; j < mres.n_colunas; j++) {
+            double soma{0.0};
+            for (int k = 0; k < m1.n_colunas; k++) {
+                soma += m1.m[i * m1.n_colunas + k] * m2.m[k * m2.n_colunas + j];
+            }
+
+            mres.m[i * mres.n_colunas + j] = soma / m;
+        }
+    }
+
+    return mres;
+}
+
+matriz transposta(matriz m) {
+    matriz mres;
+    mres.n_linhas = m.n_colunas;
+    mres.n_colunas = m.n_linhas;
+    for (int i = 0; i < mres.n_linhas; i++) {
+        for (int j = 0; j < mres.n_colunas; j++) {
+            mres.m[i * mres.n_colunas + j] = m.m[j + m.n_colunas + i];
+        }
+    }
+    return mres;
+}
+
+matriz produto_hadamard_sigmoid(matriz m1, matriz m2) {
+    matriz mres;
+    mres.n_linhas = m1.n_linhas;
+    mres.n_colunas = m1.n_colunas;
+    mres.m.resize(m1.m.size());
+    for (int i = 0; i < mres.m.size(); i++) {
+        mres.m[i] = m1.m[i] * sigmoid_grad(m2.m[i]);
+    }
+
+    return mres;
+}
+
+matriz produto_hadamard_relu(matriz m1, matriz m2) {
+    matriz mres;
+    mres.n_linhas = m1.n_linhas;
+    mres.n_colunas = m1.n_colunas;
+    mres.m.resize(m1.m.size());
+    for (int i = 0; i < mres.m.size(); i++) {
+        mres.m[i] = m1.m[i] * relu_grad(m2.m[i]);
+    }
+
+    return mres;
+}
+
+vetor mean(matriz m, int n) {
+    vetor vres(m.n_linhas, 0.0);
+    for (int i = 0; i < m.n_linhas; i++) {
+        double soma = 0;
+        for (int j = 0; j < m.n_colunas; j++) {
+            soma += m.m[i * m.n_colunas + j];
+        }
+        vres[i] = soma / n;
+    }
+
+    return vres;
+}
+
+typedef struct gradientes {
+    std::unordered_map<std::string, matriz> dW;
+    std::unordered_map<std::string, vetor> db;
+} gradientes;
+
+gradientes backward_pass(const vetor& y_true, camadas params, output cache) {
+    int m = y_true.size();
+    matriz W2 = params.W["W2"];
+    matriz Z1 = cache.cache["Z1"];
+    matriz A1 = cache.cache["A1"];
+    matriz Z2 = cache.cache["Z2"];
+    matriz A2 = cache.cache["A2"];
+    matriz X = cache.cache["X"];
+
+    matriz dA2 = binary_cross_entropy_grad(A2.m, y_true);
+
+    // dZ2 = dA2 * sigmoid_grad(Z2)
+    matriz dZ2 = produto_hadamard_sigmoid(dA2, Z2);
+
+    matriz dW2 = mult_matrix_div_m(dZ2, transposta(A1), static_cast<double>(m));
+
+    // db2 = sum(dZ2, axis=1) / m
+    vetor db2 = mean(dZ2, m);
+
+    matriz dA1 = mult_matrix_div_m(transposta(W2), dZ2, 1);
+    matriz dZ1 = produto_hadamard_relu(dA1, Z1);
+    matriz dW1 = mult_matrix_div_m(dZ1, transposta(X), m);
+    vetor db1 = mean(dZ1, m);
+
+    gradientes grad;
+    grad.dW["W1"] = dW1;
+    grad.dW["W2"] = dW2;
+    grad.db["db1"] = db1;
+    grad.db["db2"] = db2;
+
+    return grad;
 }
 
 int main() {
