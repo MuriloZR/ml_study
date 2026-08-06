@@ -412,7 +412,8 @@ previsao prever(matrix X, camadas params) {
 int main() {
   printf("Rede Neural do Zero, Problema XOR\n");
   matrix X;
-  X.m = {0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0};
+  X.m = {0.0, 0.0, 1.0, 1.0,
+         0.0, 1.0, 0.0, 1.0};
   X.n_linhas = 2;
   X.n_colunas = 4;
   matrix y{.m = {0, 1, 1, 0}, .n_linhas = 4, .n_colunas = 1};

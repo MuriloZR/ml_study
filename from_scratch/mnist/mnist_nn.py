@@ -67,7 +67,7 @@ def backward_pass(y_true, params: dict, cache: dict):
     # ── Camada de saída (camada 3) ──
     # Gradiente da loss em relação à saída
     dZ3 = cce_softmax_grad(A3, y_true) / m
-    
+
     # Gradientes dos pesos da camada 3
     dW3 = dZ3 @ A2.T
     db3 = np.sum(dZ3, axis=1, keepdims=True)
@@ -106,7 +106,7 @@ def backward_pass_loop(y_true, params, cache):
     while f"W{i}" in params:
         W.append(params[f"W{i}"])
         i+=1
-    
+
     i = 1
     while f"Z{i}" in cache:
         Z.append(cache[f"Z{i}"])
@@ -156,6 +156,12 @@ def prever(X, params):
     classes = np.argmax(probabilidades, axis=0)
     return probabilidades, classes
 
+def exportar_pesos_binario(arquivo, array):
+    # Força a matriz a ser organizada na memória no padrão C (Row-Major)
+    # e converte para um vetor 1D garantido antes de salvar.
+    vetor_limpo = np.ascontiguousarray(array, dtype=np.float64).flatten('C')
+    vetor_limpo.tofile(arquivo)
+
 if __name__ == "__main__":
     # --- 1. CARREGAMENTO E PRÉ-PROCESSAMENTO ---
     print("Carregando MNIST...")
@@ -189,27 +195,59 @@ if __name__ == "__main__":
     params = inicializar_pesos(camadas)
     batch_size = 64
     m_train = X_train.shape[1]
-    
+
     for epoch in range(epochs):
         # Shuffle (embaralhar) os dados a cada época
         perm = np.random.permutation(m_train)
         X_train_shuffled = X_train[:, perm]
         y_train_shuffled = y_train_oh[:, perm]
-        
+
         for i in range(0, m_train, batch_size):
             # Seleciona o lote
             x_batch = X_train_shuffled[:, i:i+batch_size]
             y_batch = y_train_shuffled[:, i:i+batch_size]
-            
+
             # Forward, Backward e Update
             y_pred, cache = forward_pass(x_batch, params)
             grads = backward_pass(y_batch, params, cache)
             params = atualizar_pesos(params, grads, lr)
-        
+
         # --- 4. AVALIAÇÃO PARCIAL ---
         # A cada época, testamos no set de validação (X_test)
         prob, classes_preditas = prever(X_test, params)
         acuracia = np.mean(classes_preditas == y_test) * 100
         print(f"Época {epoch+1}/{epochs} | Acurácia no Teste: {acuracia:.2f}%")
-    
+
+    # --- 5. EXPORTAÇÃO DE DADOS PARA INFERÊNCIA EM C++ ---
+
+    # Seleciona a primeira imagem (índice 0) do conjunto de teste.
+    # Como X_test está no formato (784, Amostras), pegamos todas as linhas da coluna 0.
+    imagem_teste = X_test[:, 0]
+    label_teste = y_test[0]
+
+    print("\n--- Exportação para Inferência ---")
+    print(f"Exportando imagem de teste...")
+    print(f"GABARITO: O dígito real dessa imagem é o número {label_teste}")
+
+    # Exporta a imagem e os pesos da rede em binário puro,
+    # forçando o formato float64
+    exportar_pesos_binario("imagem_teste.bin", imagem_teste)
+    exportar_pesos_binario("W1.bin", params["W1"])
+    exportar_pesos_binario("b1.bin", params["b1"])
+    exportar_pesos_binario("W2.bin", params["W2"])
+    exportar_pesos_binario("b2.bin", params["b2"])
+    exportar_pesos_binario("W3.bin", params["W3"])
+    exportar_pesos_binario("b3.bin", params["b3"])
+
+    print("\n--- Probabilidades no Python ---")
+    # Extrai a imagem 0 garantindo que ela mantenha o formato de coluna (784, 1)
+    x_unica = X_test[:, 0].reshape(-1, 1)
+
+    # Passa a imagem pela rede com os pesos já treinados
+    probs_py, _ = forward_pass(x_unica, params)
+
+    # Imprime cada uma das 10 probabilidades
+    for i in range(10):
+        print(f"Classe {i}: {probs_py[i, 0]:.6f}")
+
     print("Treinamento concluído!")
