@@ -1,5 +1,5 @@
 {
-  description = "Ambiente de ML - Livro Aurélien Géron";
+  description = "Ambiente de ML";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -22,10 +22,6 @@
             python-pkgs.numpy
           ]))
         ];
-
-        shellHook = ''
-          echo "Ambiente pronto"
-        '';
       };
     };
 }

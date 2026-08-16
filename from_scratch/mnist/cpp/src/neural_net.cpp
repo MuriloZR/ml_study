@@ -31,7 +31,6 @@ RedeNeural carregar_modelo(const std::vector<int>& topologia) {
         int linhas = topologia[i + 1];
         int colunas = topologia[i];
 
-        // Puxa os arquivos W1.bin, b1.bin, W2.bin, etc. dinamicamente
         std::string nome_w = "W" + std::to_string(i + 1) + ".bin";
         std::string nome_b = "b" + std::to_string(i + 1) + ".bin";
 
